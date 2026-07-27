@@ -13,6 +13,7 @@ import '../../core/widgets/minecraft_chest.dart';
 import '../../core/widgets/pixel_slot.dart';
 import '../../core/widgets/pixel_text_field.dart';
 import '../settings/widgets/chest_info_cards.dart';
+import 'stats_card.dart';
 
 /// My stuff: the cross-box hub. Search every chest at once, see the latest
 /// additions, and manage the chests themselves (open info / delete).
@@ -116,6 +117,14 @@ class _FindScreenState extends ConsumerState<FindScreen> {
                         ),
                         const SizedBox(height: 10),
                         const RecentItemsCard(),
+                        const SizedBox(height: 16),
+                        Text(
+                          'STATISTICS',
+                          style: text.labelPixel
+                              .copyWith(color: mc.stoneMid, fontSize: 10),
+                        ),
+                        const SizedBox(height: 10),
+                        const StatsCard(),
                         const SizedBox(height: 16),
                         Text(
                           'Search above to find which box holds an item.',

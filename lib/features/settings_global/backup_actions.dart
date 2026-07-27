@@ -4,13 +4,45 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/data/backup/backup_codec.dart';
 import '../../core/data/models/item.dart';
 import '../../core/data/repositories/inventory_repository.dart';
+
+/// When the last successful export happened, persisted locally. Null until
+/// the first backup - the Settings screen nudges while it stays null.
+class LastBackupNotifier extends Notifier<DateTime?> {
+  static const _prefsKey = 'last_backup_at';
+
+  @override
+  DateTime? build() {
+    _load();
+    return null;
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final millis = prefs.getInt(_prefsKey);
+    if (millis != null) {
+      state = DateTime.fromMillisecondsSinceEpoch(millis);
+    }
+  }
+
+  Future<void> stamp() async {
+    final now = DateTime.now();
+    state = now;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_prefsKey, now.millisecondsSinceEpoch);
+  }
+}
+
+final lastBackupProvider =
+    NotifierProvider<LastBackupNotifier, DateTime?>(LastBackupNotifier.new);
 
 /// Result of an export or import, for the snackbar.
 class BackupOutcome {
