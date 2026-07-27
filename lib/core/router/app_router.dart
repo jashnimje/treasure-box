@@ -10,6 +10,7 @@ import '../../features/home/home_screen.dart';
 import '../../features/inventory/inventory_screen.dart';
 import '../../features/item_detail/item_detail_screen.dart';
 import '../../features/settings/settings_screen.dart';
+import '../../features/settings_global/global_settings_screen.dart';
 import '../widgets/block_wipe_transition.dart';
 import '../widgets/shell_scaffold.dart';
 
@@ -51,12 +52,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             pageBuilder: (context, state) =>
                 blockWipePage(const SettingsScreen()),
           ),
-          // Legacy path: keep old links working.
-          GoRoute(
-            path: '/settings',
-            redirect: (context, state) => '/info',
-          ),
         ],
+      ),
+      GoRoute(
+        path: '/settings',
+        pageBuilder: (context, state) =>
+            blockWipePage(const GlobalSettingsScreen()),
       ),
       GoRoute(
         path: '/inventory/item/:id',

@@ -94,13 +94,25 @@ void main() {
         throwsA(isA<BackupFormatException>()));
   });
 
-  test('CSV escapes commas and quotes', () async {
+  test('photo refs survive the JSON round-trip as archive paths', () async {
     final box = await repo.currentBox();
-    await repo
-        .upsertItem(box.id, draft('Ring, "the good one"', spot: 'pouch'));
-    final csv = encodeBackupCsv(await repo.exportBackup());
-    expect(csv.split('\n').first,
-        'box,box_code,item,category,rarity,qty,spot,notes,added');
-    expect(csv, contains('"Ring, ""the good one"""'));
+    await repo.upsertItem(
+        box.id,
+        ItemDraft(
+          name: 'Polaroids',
+          category: ItemCategory.misc,
+          iconKey: 'book',
+          qty: 1,
+          rarity: Rarity.rare,
+          photoPath: '/data/user/0/app/cache/pic_1.jpg',
+        ));
+
+    final json = encodeBackupJson(await repo.exportBackup());
+    expect(json, contains('"photo": "photos/box1-item'));
+
+    final decoded = decodeBackupJson(json);
+    final item = decoded.single.items.single;
+    expect(item.photoPath, startsWith('photos/box1-item'));
+    expect(item.photoPath, endsWith('.jpg'));
   });
 }

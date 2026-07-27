@@ -27,8 +27,16 @@ class Backup {
 /// readers accept any version they know how to parse.
 const int kBackupFormatVersion = 1;
 
-/// Encodes a [Backup] as pretty-printed JSON - the full-fidelity format
-/// (photos excepted: paths are device-local and are not portable).
+/// The archive path a photo gets inside the backup zip, unique per item.
+/// Kept flat and extension-preserving so any unzip tool shows the images.
+String photoArchivePath(int boxSlot, int itemId, String photoPath) {
+  final dot = photoPath.lastIndexOf('.');
+  final ext = dot > 0 ? photoPath.substring(dot) : '.jpg';
+  return 'photos/box$boxSlot-item$itemId$ext';
+}
+
+/// Encodes a [Backup] as pretty-printed JSON. Items with a photo carry the
+/// archive path where the zip packager stores the image.
 String encodeBackupJson(Backup backup) {
   return const JsonEncoder.withIndent('  ').convert({
     'app': 'treasure_box',
@@ -52,6 +60,8 @@ String encodeBackupJson(Backup backup) {
                 'rarity': i.rarity.name,
                 if (i.notes != null) 'notes': i.notes,
                 if (i.spot != null) 'spot': i.spot,
+                if (i.hasPhoto)
+                  'photo': photoArchivePath(b.box.slot, i.id, i.photoPath!),
                 'createdAt': i.createdAt.toIso8601String(),
               },
           ],
@@ -121,6 +131,9 @@ List<ImportedBox> decodeBackupJson(String source) {
           rarity: Rarity.fromName(i['rarity'] as String?),
           notes: i['notes'] as String?,
           spot: i['spot'] as String?,
+          // The archive path; the importer swaps it for a restored local
+          // file path before writing to the database.
+          photoPath: i['photo'] as String?,
         ));
       }
     }
@@ -138,32 +151,3 @@ List<ImportedBox> decodeBackupJson(String source) {
   return result;
 }
 
-/// Encodes a [Backup] as CSV - one row per item, spreadsheet-friendly.
-/// Lossy by design (no capacities or box styles); use JSON to restore.
-String encodeBackupCsv(Backup backup) {
-  final buf = StringBuffer()
-    ..writeln('box,box_code,item,category,rarity,qty,spot,notes,added');
-  for (final b in backup.boxes) {
-    for (final i in b.items) {
-      buf.writeln([
-        b.box.name,
-        b.box.code,
-        i.name,
-        i.category.label,
-        i.rarity.label,
-        '${i.qty}',
-        i.spot ?? '',
-        i.notes ?? '',
-        i.createdAt.toIso8601String(),
-      ].map(_csvCell).join(','));
-    }
-  }
-  return buf.toString();
-}
-
-String _csvCell(String value) {
-  if (value.contains(',') || value.contains('"') || value.contains('\n')) {
-    return '"${value.replaceAll('"', '""')}"';
-  }
-  return value;
-}

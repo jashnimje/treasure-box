@@ -301,9 +301,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         const SizedBox(width: 10),
                         Expanded(
                           child: _QuietEntry(
-                            icon: Icons.menu_book_outlined,
-                            label: 'About',
-                            onTap: () => context.push('/about'),
+                            icon: Icons.settings_outlined,
+                            label: 'Settings',
+                            onTap: () => context.push('/settings'),
                           ),
                         ),
                       ],
