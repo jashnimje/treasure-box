@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import '../app_database.dart' as db;
+import '../backup/backup_codec.dart';
 import '../daos/boxes_dao.dart';
 import '../daos/items_dao.dart';
 import '../models/box.dart';
@@ -230,5 +231,60 @@ class DriftInventoryRepository implements InventoryRepository {
     return matches;
   }
 
+  @override
+  Future<Backup> exportBackup() async {
+    final boxRows = await _boxes.allBoxes();
+    final itemRows = await _items.allItems();
+    final itemsByBox = <int, List<Item>>{};
+    for (final row in itemRows) {
+      itemsByBox.putIfAbsent(row.boxId, () => []).add(_toItem(row));
+    }
+    return Backup(
+      exportedAt: DateTime.now(),
+      boxes: [
+        for (final b in boxRows)
+          BoxBackup(box: _toBox(b), items: itemsByBox[b.id] ?? const []),
+      ],
+    );
+  }
 
+  @override
+  Future<int> importBackup(List<ImportedBox> imported) async {
+    var written = 0;
+    // One transaction: a failed import never leaves half a backup behind.
+    await _db.transaction(() async {
+      for (final ib in imported) {
+        // Match by slot code so re-importing a backup is idempotent.
+        final code = db.slotCode(ib.slot);
+        final existingRow =
+            ib.slot > 0 ? await _boxes.boxByToken(code) : null;
+        final int boxId;
+        if (existingRow != null) {
+          boxId = existingRow.id;
+        } else {
+          final created = await _boxes.createBox(
+            name: ib.name,
+            skinKey: ib.skinKey,
+            preferredSlot: ib.slot,
+          );
+          boxId = created.id;
+          if (ib.capacity != 27) {
+            await _boxes.setCapacity(boxId, ib.capacity);
+          }
+        }
+
+        // Merge items, skipping ones the box already holds (same name).
+        final existingNames = {
+          for (final row in await _items.allItems())
+            if (row.boxId == boxId) row.name.toLowerCase(),
+        };
+        for (final draft in ib.items) {
+          if (existingNames.contains(draft.name.toLowerCase())) continue;
+          await upsertItem(boxId, draft);
+          written++;
+        }
+      }
+    });
+    return written;
+  }
 }

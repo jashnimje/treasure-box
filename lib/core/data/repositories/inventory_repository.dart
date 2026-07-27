@@ -1,3 +1,4 @@
+import '../backup/backup_codec.dart';
 import '../models/box.dart';
 import '../models/box_code.dart';
 import '../models/item.dart';
@@ -76,4 +77,14 @@ abstract class InventoryRepository {
   /// Find items across all boxes whose name/category/notes/spot match [query].
   /// Returns each match paired with its owning box.
   Future<List<FoundItem>> findItems(String query);
+
+  // ---- Backup ----
+
+  /// Snapshot of every box and item, for export.
+  Future<Backup> exportBackup();
+
+  /// Restore boxes from an import. Boxes are matched by slot code: a match
+  /// merges items into the existing box (skipping exact-name duplicates);
+  /// no match creates the box. Returns the number of items written.
+  Future<int> importBackup(List<ImportedBox> boxes);
 }

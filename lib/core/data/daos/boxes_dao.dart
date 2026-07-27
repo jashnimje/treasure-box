@@ -43,14 +43,21 @@ class BoxesDao extends DatabaseAccessor<AppDatabase> with _$BoxesDaoMixin {
 
   /// Create a new box in the lowest free identity slot. Slots are reused
   /// after deletion (delete BOX-2, the next box IS BOX-2 again), so printed
-  /// QR labels and written NFC tags survive box turnover.
+  /// QR labels and written NFC tags survive box turnover. A backup restore
+  /// passes [preferredSlot] to keep the codes its labels were printed with;
+  /// it is honored when free.
   Future<BoxRow> createBox({
     String name = 'New Box',
     String skinKey = 'oak',
+    int? preferredSlot,
   }) async {
     final now = DateTime.now();
     final count = await boxCount();
-    final slot = await _lowestFreeSlot();
+    var slot = await _lowestFreeSlot();
+    if (preferredSlot != null && preferredSlot > 0) {
+      final taken = await boxByToken(slotCode(preferredSlot)) != null;
+      if (!taken) slot = preferredSlot;
+    }
     final id = await into(boxes).insert(
       BoxesCompanion.insert(
         name: Value(name),

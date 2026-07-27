@@ -10,9 +10,11 @@ import '../../core/data/models/box.dart';
 import '../../core/widgets/danger_confirm_dialog.dart';
 import '../../core/widgets/item_image.dart';
 import '../../core/widgets/minecraft_chest.dart';
+import '../../core/widgets/pixel_button.dart';
 import '../../core/widgets/pixel_slot.dart';
 import '../../core/widgets/pixel_text_field.dart';
 import '../settings/widgets/chest_info_cards.dart';
+import 'backup_actions.dart' as backup;
 
 /// My stuff: the cross-box hub. Search every chest at once, see the latest
 /// additions, and manage the chests themselves (open info / delete).
@@ -31,6 +33,18 @@ class _FindScreenState extends ConsumerState<FindScreen> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _runBackup(
+      Future<backup.BackupOutcome> Function() action) async {
+    final outcome = await action();
+    if (!mounted) return;
+    final mc = context.mc;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      backgroundColor: outcome.failed ? mc.stoneDark : mc.grassGreen,
+      content: Text(outcome.message,
+          style: context.mcText.bodyReadable.copyWith(color: mc.white)),
+    ));
   }
 
   Future<void> _deleteBox(Box box) async {
@@ -122,6 +136,66 @@ class _FindScreenState extends ConsumerState<FindScreen> {
                           textAlign: TextAlign.center,
                           style: text.bodyReadable
                               .copyWith(color: mc.stoneDark),
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          'BACKUP',
+                          style: text.labelPixel
+                              .copyWith(color: mc.stoneMid, fontSize: 10),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: PixelButton(
+                                height: 44,
+                                onPressed: () => _runBackup(() =>
+                                    backup.exportBackup(
+                                        ref.read(
+                                            inventoryRepositoryProvider),
+                                        asCsv: false)),
+                                child: Text('Export',
+                                    style: text.labelPixel.copyWith(
+                                        color: mc.white, fontSize: 10)),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: PixelButton(
+                                height: 44,
+                                onPressed: () => _runBackup(() =>
+                                    backup.exportBackup(
+                                        ref.read(
+                                            inventoryRepositoryProvider),
+                                        asCsv: true)),
+                                child: Text('Export CSV',
+                                    style: text.labelPixel.copyWith(
+                                        color: mc.white, fontSize: 10)),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: PixelButton(
+                                height: 44,
+                                variant: PixelButtonVariant.grass,
+                                onPressed: () => _runBackup(() =>
+                                    backup.importBackup(ref.read(
+                                        inventoryRepositoryProvider))),
+                                child: Text('Import',
+                                    style: text.labelPixel.copyWith(
+                                        color: mc.white, fontSize: 10)),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Share the export anywhere - including Google '
+                          'Drive. Import merges a backup back in without '
+                          'duplicating what you already have.',
+                          textAlign: TextAlign.center,
+                          style: text.bodyReadable.copyWith(
+                              color: mc.stoneDark, fontSize: 14),
                         ),
                       ],
                     )
