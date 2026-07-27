@@ -1,0 +1,63 @@
+name: Release
+
+# Push a version tag to cut a release with APKs attached:
+#   git tag v1.0.1 && git push origin v1.0.1
+#
+# Signing: if the ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD /
+# ANDROID_KEY_ALIAS secrets are set, APKs are release-signed; otherwise the
+# build falls back to the debug key (fine for testing, not for updates).
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.32.2
+          channel: stable
+          cache: true
+
+      - name: Restore signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "No signing secrets set - building with the debug key."
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.jks
+          cat > android/key.properties <<EOF
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyPassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=release.jks
+          EOF
+
+      - run: flutter pub get
+      - run: dart run build_runner build --delete-conflicting-outputs
+      - run: flutter test
+      - run: flutter build apk --release --split-per-abi
+
+      - name: Rename APKs for the release page
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          cd build/app/outputs/flutter-apk
+          mv app-arm64-v8a-release.apk   "treasure-box-$v-arm64.apk"
+          mv app-armeabi-v7a-release.apk "treasure-box-$v-arm32.apk"
+          mv app-x86_64-release.apk      "treasure-box-$v-x86_64.apk"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/app/outputs/flutter-apk/treasure-box-*.apk
+          generate_release_notes: true
