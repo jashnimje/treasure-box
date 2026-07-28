@@ -1,27 +1,36 @@
 name: Release
 
-# Push a version tag to cut a release with APKs attached:
+# Push a version tag to cut a release with binaries for every platform:
 #   git tag v1.0.1 && git push origin v1.0.1
 #
-# Signing: if the ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD /
-# ANDROID_KEY_ALIAS secrets are set, APKs are release-signed; otherwise the
-# build falls back to the debug key (fine for testing, not for updates).
+# Or run manually (Actions tab -> Release -> Run workflow) to dry-run all
+# platform builds without creating a release.
+#
+# Signing notes:
+# - Android: release-signed when the ANDROID_KEYSTORE_* secrets are set,
+#   debug-signed otherwise (fine for testing, breaks updates over installs).
+# - iOS: unsigned .ipa (no Apple Developer account) - installable only via
+#   sideloading tools (AltStore/Sideloadly).
+# - macOS/Windows/Linux: unsigned - expect Gatekeeper/SmartScreen prompts.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+env:
+  FLUTTER_VERSION: 3.32.2
+
 jobs:
-  build-and-release:
+  android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.32.2
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
@@ -45,19 +54,145 @@ jobs:
 
       - run: flutter pub get
       - run: dart run build_runner build --delete-conflicting-outputs
+      # Tests run once, here (the fastest runner); other jobs only build.
       - run: flutter test
       - run: flutter build apk --release --split-per-abi
 
-      - name: Rename APKs for the release page
+      - name: Collect
         run: |
-          v="${GITHUB_REF_NAME#v}"
-          cd build/app/outputs/flutter-apk
-          mv app-arm64-v8a-release.apk   "treasure-box-$v-arm64.apk"
-          mv app-armeabi-v7a-release.apk "treasure-box-$v-arm32.apk"
-          mv app-x86_64-release.apk      "treasure-box-$v-x86_64.apk"
+          v="${GITHUB_REF_NAME#v}"; [ "${GITHUB_REF_TYPE}" = "tag" ] || v="dev"
+          mkdir -p dist/android && cd build/app/outputs/flutter-apk
+          mv app-arm64-v8a-release.apk   "$GITHUB_WORKSPACE/dist/android/treasure-box-$v-android-arm64.apk"
+          mv app-armeabi-v7a-release.apk "$GITHUB_WORKSPACE/dist/android/treasure-box-$v-android-arm32.apk"
+          mv app-x86_64-release.apk      "$GITHUB_WORKSPACE/dist/android/treasure-box-$v-android-x86_64.apk"
+      - uses: actions/upload-artifact@v7
+        with: { name: android, path: dist/android }
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
         with:
-          files: build/app/outputs/flutter-apk/treasure-box-*.apk
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart run build_runner build --delete-conflicting-outputs
+      - run: flutter build ios --release --no-codesign
+      - name: Package unsigned ipa
+        run: |
+          v="${GITHUB_REF_NAME#v}"; [ "${GITHUB_REF_TYPE}" = "tag" ] || v="dev"
+          mkdir -p Payload dist/ios
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -qr "dist/ios/treasure-box-$v-ios-unsigned.ipa" Payload
+      - uses: actions/upload-artifact@v7
+        with: { name: ios, path: dist/ios }
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart run build_runner build --delete-conflicting-outputs
+      - run: flutter build macos --release
+      - name: Package app bundle
+        run: |
+          v="${GITHUB_REF_NAME#v}"; [ "${GITHUB_REF_TYPE}" = "tag" ] || v="dev"
+          mkdir -p dist/macos
+          # ditto preserves the bundle's symlinks/permissions (zip -r breaks them)
+          ditto -c -k --keepParent "build/macos/Build/Products/Release/Treasure Box.app" \
+            "dist/macos/treasure-box-$v-macos.zip"
+      - uses: actions/upload-artifact@v7
+        with: { name: macos, path: dist/macos }
+
+  windows:
+    # Pinned: windows-latest ships a Visual Studio newer than major 17, which
+    # Flutter 3.32's tooling maps to the (absent) "Visual Studio 16 2019"
+    # CMake generator. The 2022 image has VS 17, which Flutter handles.
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart run build_runner build --delete-conflicting-outputs
+      - run: flutter build windows --release
+      - name: Package
+        shell: bash
+        run: |
+          v="${GITHUB_REF_NAME#v}"; [ "${GITHUB_REF_TYPE}" = "tag" ] || v="dev"
+          mkdir -p dist/windows
+          cd build/windows/x64/runner/Release
+          7z a -tzip "$GITHUB_WORKSPACE/dist/windows/treasure-box-$v-windows-x64.zip" .
+      - uses: actions/upload-artifact@v7
+        with: { name: windows, path: dist/windows }
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install desktop build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgtk-3-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart run build_runner build --delete-conflicting-outputs
+      - run: flutter build linux --release
+      - name: Package
+        run: |
+          v="${GITHUB_REF_NAME#v}"; [ "${GITHUB_REF_TYPE}" = "tag" ] || v="dev"
+          mkdir -p dist/linux
+          tar -C build/linux/x64/release/bundle -czf \
+            "dist/linux/treasure-box-$v-linux-x64.tar.gz" .
+      - uses: actions/upload-artifact@v7
+        with: { name: linux, path: dist/linux }
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart run build_runner build --delete-conflicting-outputs
+      - run: flutter build web --release
+      - name: Package
+        run: |
+          v="${GITHUB_REF_NAME#v}"; [ "${GITHUB_REF_TYPE}" = "tag" ] || v="dev"
+          mkdir -p dist/web
+          cd build/web && zip -qr "$GITHUB_WORKSPACE/dist/web/treasure-box-$v-web.zip" .
+      - uses: actions/upload-artifact@v7
+        with: { name: web, path: dist/web }
+
+  release:
+    # Only on tag pushes; a manual dispatch is a build-everything dry run.
+    if: github.ref_type == 'tag'
+    needs: [android, ios, macos, windows, linux, web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/**/*
           generate_release_notes: true

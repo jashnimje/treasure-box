@@ -108,6 +108,24 @@ torches, the pixel item icons, and the app icon itself are all
 headings and VT323 for reading. The app runs fullscreen immersive, like the
 game it tips its hat to.
 
+## Downloads
+
+Grab the latest build from the
+[Releases page](https://github.com/jashnimje/treasure-box/releases). Every
+tagged release ships all platforms:
+
+| Platform | File | Notes |
+| --- | --- | --- |
+| Android | `*-android-arm64.apk` | signed; arm32/x86_64 variants too |
+| iOS | `*-ios-unsigned.ipa` | sideload via AltStore/Sideloadly |
+| macOS | `*-macos.zip` | unsigned - right-click -> Open once |
+| Windows | `*-windows-x64.zip` | unsigned - SmartScreen: Run anyway |
+| Linux | `*-linux-x64.tar.gz` | needs GTK 3 |
+| Web | `*-web.zip` | static bundle, any web server |
+
+Android is the primary target (it is the one with NFC). Desktop and web run
+the full app with simulated taps.
+
 ## Getting started
 
 ```sh
