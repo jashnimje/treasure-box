@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/providers/box_providers.dart';
 import '../../core/providers/repository_providers.dart';
 import '../../core/theme/minecraft_theme.dart';
+import '../../core/update/update_providers.dart';
 import '../../core/widgets/danger_confirm_dialog.dart';
 import '../../core/widgets/pixel_button.dart';
 import '../../core/widgets/pixel_panel.dart';
 import 'backup_actions.dart' as backup;
-
-/// App version shown in About. Keep in step with pubspec.yaml.
-const String kAppVersion = '1.0.0';
 
 /// Global app settings: backup and restore, a short guide to the open
 /// rails, the About book, and the global danger zone. Per-chest settings
@@ -220,7 +219,8 @@ class _GlobalSettingsScreenState extends ConsumerState<GlobalSettingsScreen> {
                   const SizedBox(height: 12),
                   Center(
                     child: Text(
-                      'Treasure Box $kAppVersion',
+                      'Treasure Box '
+                      '${ref.watch(appVersionProvider).valueOrNull ?? ''}',
                       style: text.bodyReadable
                           .copyWith(color: mc.stoneDark, fontSize: 14),
                     ),
@@ -228,6 +228,11 @@ class _GlobalSettingsScreenState extends ConsumerState<GlobalSettingsScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 24),
+
+            // ---- Updates ----
+            _SectionLabel('UPDATES'),
+            const _UpdateCard(),
             const SizedBox(height: 28),
 
             // ---- Danger zone ----
@@ -243,6 +248,117 @@ class _GlobalSettingsScreenState extends ConsumerState<GlobalSettingsScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Update check against GitHub releases: shows the installed state, and
+/// when a newer version exists, its notes and a download button (direct
+/// APK for this device on Android, the release page elsewhere).
+class _UpdateCard extends ConsumerWidget {
+  const _UpdateCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mc = context.mc;
+    final text = context.mcText;
+    final update = ref.watch(availableUpdateProvider);
+
+    return PixelPanel(
+      fill: mc.headerBar,
+      child: update.when(
+        loading: () => Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: mc.stoneMid),
+            ),
+            const SizedBox(width: 12),
+            Text('Checking for updates...',
+                style: text.bodyReadable.copyWith(color: mc.stoneMid)),
+          ],
+        ),
+        error: (_, __) => _upToDateRow(context, ref,
+            label: 'Could not check for updates'),
+        data: (info) {
+          if (info == null) {
+            return _upToDateRow(context, ref,
+                label: 'You have the latest version');
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.new_releases_outlined,
+                      size: 20, color: mc.gold),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Version ${info.version} is out!',
+                      style: text.labelPixel
+                          .copyWith(color: mc.gold, fontSize: 11),
+                    ),
+                  ),
+                ],
+              ),
+              if (info.changelog.trim().isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  // First lines of the release notes, not the whole wall.
+                  info.changelog.trim().split('\n').take(6).join('\n'),
+                  style: text.bodyReadable
+                      .copyWith(color: mc.stoneMid, fontSize: 14),
+                ),
+              ],
+              const SizedBox(height: 12),
+              PixelButton(
+                width: double.infinity,
+                height: 46,
+                variant: PixelButtonVariant.grass,
+                onPressed: () => launchUrl(
+                  Uri.parse(info.assetUrl ?? info.pageUrl),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: Text(
+                  info.assetUrl != null
+                      ? 'Download update'
+                      : 'Open release page',
+                  style: text.labelPixel
+                      .copyWith(color: mc.white, fontSize: 10),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _upToDateRow(BuildContext context, WidgetRef ref,
+      {required String label}) {
+    final mc = context.mc;
+    final text = context.mcText;
+    return Row(
+      children: [
+        Icon(Icons.check_circle_outline, size: 20, color: mc.xpGreen),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(label,
+              style: text.bodyReadable.copyWith(color: mc.stoneMid)),
+        ),
+        GestureDetector(
+          onTap: () => ref.refresh(availableUpdateProvider),
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Text('Check now',
+                style: text.bodyReadable.copyWith(color: mc.diamond)),
+          ),
+        ),
+      ],
     );
   }
 }
